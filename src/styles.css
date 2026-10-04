@@ -64,7 +64,7 @@
     --fuwari-danger-hue: 25;
     --fuwari-content-delay: 150ms;
     --fuwari-stagger: 1;
-    --fuwari-page-width: 75rem;
+    --fuwari-page-width: 100rem;
     --fuwari-toc-width: calc((100vw - var(--fuwari-page-width)) / 2 - 1rem);
 
     --fuwari-primary: oklch(0.7 0.14 var(--fuwari-hue));

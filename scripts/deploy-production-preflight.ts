@@ -20,14 +20,14 @@ type RunJson = (args: string[]) => unknown;
 
 function record(value: unknown): JsonRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Unexpected Wrangler JSON response; refusing deployment.");
+    throw new Error("Unexpected cf JSON response; refusing deployment.");
   }
   return value as JsonRecord;
 }
 
 function nonemptyString(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) {
-    throw new Error("Missing value in Wrangler response; refusing deployment.");
+    throw new Error("Missing value in cf response; refusing deployment.");
   }
   return value;
 }
@@ -99,11 +99,9 @@ export function pendingMigrations(
 function queryRows(runJson: RunJson, sql: string): JsonRecord[] {
   const response = runJson([
     "d1",
-    "execute",
-    "DB",
-    "--remote",
-    "--json",
-    "--command",
+    "query",
+    productionTarget.D1_DATABASE_ID,
+    "--sql",
     sql,
   ]);
   if (!Array.isArray(response) || response.length !== 1) {
@@ -116,6 +114,30 @@ function queryRows(runJson: RunJson, sql: string): JsonRecord[] {
   return result.results.map(record);
 }
 
+export function validateRuntimeSecrets(response: unknown): void {
+  if (!Array.isArray(response)) {
+    throw new Error("无法读取生产运行时机密清单；拒绝发布。");
+  }
+  const secrets = new Set(
+    response
+      .map(record)
+      .filter((binding) => binding.type === "secret_text")
+      .map((binding) => nonemptyString(binding.name)),
+  );
+  const missing = [
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL",
+    "DOMAIN",
+    "GITHUB_CLIENT_ID",
+    "GITHUB_CLIENT_SECRET",
+  ].filter((name) => !secrets.has(name));
+  if (missing.length) {
+    throw new Error(
+      `生产必需变量尚未全部设为 Secret：${missing.join(", ")}。v3 发布不保留普通文本变量；请先在 Cloudflare 转换后再发布。`,
+    );
+  }
+}
+
 export function inspectProduction({
   env,
   migrations,
@@ -126,11 +148,20 @@ export function inspectProduction({
   runJson: RunJson;
 }) {
   validateProductionEnvironment(env);
-  const deployments = runJson(["deployments", "list", "--json"]);
+  const deployments = record(
+    runJson([
+      "workers",
+      "deployments",
+      "list",
+      "--worker",
+      productionTarget.WORKER_NAME,
+    ]),
+  ).deployments;
   if (!Array.isArray(deployments) || !deployments.length) {
     throw new Error("未找到现有生产 Worker 部署；拒绝创建新 Worker。");
   }
-  const previous = record(deployments[deployments.length - 1]);
+  // cf returns the active deployment first, unlike the old Wrangler adapter.
+  const previous = record(deployments[0]);
   const deploymentId = nonemptyString(previous.id);
   if (!Array.isArray(previous.versions) || !previous.versions.length) {
     throw new Error("无法记录现有 Worker 版本；拒绝发布。");
@@ -138,8 +169,17 @@ export function inspectProduction({
   const versionIds = previous.versions.map((version) =>
     nonemptyString(record(version).version_id),
   );
+  validateRuntimeSecrets(
+    runJson([
+      "workers",
+      "secrets",
+      "list",
+      "--worker",
+      productionTarget.WORKER_NAME,
+    ]),
+  );
 
-  // `wrangler d1 migrations list` runs CREATE TABLE IF NOT EXISTS. Only
+  // Migration-list commands may create a ledger. Only
   // SELECT queries belong in this preflight, including when the ledger is absent.
   const tables = queryRows(
     runJson,
@@ -184,26 +224,30 @@ export function inspectProduction({
     );
   }
   const bookmark = nonemptyString(
-    record(runJson(["d1", "time-travel", "info", "DB", "--json"])).bookmark,
+    record(
+      runJson([
+        "d1",
+        "time-travel",
+        "get-bookmark",
+        productionTarget.D1_DATABASE_ID,
+      ]),
+    ).bookmark,
   );
   return { pending, bookmark, deploymentId, versionIds };
 }
 
-function runWranglerJson(args: string[]): unknown {
+function runCfJson(args: string[]): unknown {
   let output: string;
   try {
-    output = execFileSync(
-      resolve("node_modules/.bin/wrangler"),
-      [...args, "--config", "wrangler.jsonc"],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "inherit"],
-        timeout: 60_000,
-      },
-    );
+    output = execFileSync(resolve("node_modules/.bin/cf"), args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+      timeout: 60_000,
+      env: { ...process.env, CF_QUIET: "1" },
+    });
   } catch {
     throw new Error(
-      `Wrangler ${args.slice(0, 3).join(" ")} 失败；检查权限与上方错误。`,
+      `cf ${args.slice(0, 3).join(" ")} 失败；检查权限与上方错误。`,
     );
   }
   return JSON.parse(output);
@@ -221,7 +265,7 @@ if (import.meta.main) {
         migrations: readdirSync("migrations").filter((name) =>
           name.endsWith(".sql"),
         ),
-        runJson: runWranglerJson,
+        runJson: runCfJson,
       });
       const summary = [
         "### 生产迁移前记录",

@@ -94,10 +94,14 @@ cp .dev.vars.example .dev.vars
 ### 2. 启动本地开发服务
 
 ```bash
+# 首次启动或拉取了新增迁移后，更新本地模拟数据库
+bun run db:migrate:local
 bun dev
 ```
 
 在浏览器中打开 `http://localhost:3000` 即可开始预览。
+
+本地开发使用固定的模拟 D1 数据库，与 `db:migrate:local` 共用 `.wrangler/state`；即使 `.env` 填有生产 `D1_DATABASE_ID`，开发模式也不会切换到它。上述迁移命令带 `--local`，只更新本地数据。
 
 > [!TIP]
 > - 本地开发模式下，注册账号不会真实投递外部邮件，验证链接会直接打印在终端控制台中，点击即可完成激活。

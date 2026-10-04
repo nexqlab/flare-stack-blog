@@ -12,8 +12,8 @@ const env = process.env;
 const workerName = env.WORKER_NAME?.trim() || "worker-name-placeholder";
 const queueName = env.QUEUE_NAME?.trim() || "queue-name-placeholder";
 const bucketName = env.BUCKET_NAME?.trim() || "bucket-name-placeholder";
-const d1DatabaseId =
-  env.D1_DATABASE_ID?.trim() || "00000000-0000-4000-8000-000000000000";
+const localD1DatabaseId = "00000000-0000-4000-8000-000000000000";
+const d1DatabaseId = env.D1_DATABASE_ID?.trim() || localD1DatabaseId;
 const kvNamespaceId =
   env.KV_NAMESPACE_ID?.trim() || "00000000000000000000000000000000";
 const domain = env.DOMAIN?.trim();
@@ -24,6 +24,9 @@ const useRoutes = ["1", "true", "yes", "on"].includes(
 export default defineConfig((ctx) => {
   // Tests only produce to the queue; a consumer would race their assertions.
   const isTest = ctx.mode === "test";
+  // `bun dev` inherits .env, which may contain the production database ID.
+  // Always use the same local database that `bun db:migrate:local` initializes.
+  const isLocal = isTest || ctx.mode === "development";
 
   return {
     worker: {
@@ -56,7 +59,7 @@ export default defineConfig((ctx) => {
             ]),
       ],
       env: {
-        DB: bindings.d1({ id: d1DatabaseId }),
+        DB: bindings.d1({ id: isLocal ? localD1DatabaseId : d1DatabaseId }),
         KV: bindings.kv({ id: kvNamespaceId }),
         R2: bindings.r2({ name: bucketName }),
         QUEUE: bindings.queue({ name: queueName }),

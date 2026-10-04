@@ -277,14 +277,14 @@ Token 以 **Edit Cloudflare Workers** 权限模板为基础，限定到此账号
 
 原部署已启用 Umami 时，还要添加原来的 `VITE_UMAMI_WEBSITE_ID`；已启用 Turnstile 时添加原来的 `VITE_TURNSTILE_SITE_KEY`。这些值是前端公开配置，不要填写 Umami 密码、API Token 或 Turnstile Secret。如果历史部署已将这两项公开配置放在同名仓库 Secrets 中，任务会在缺少 Variable 时继续读取已有 Secret，无需重新获取值；同名 Variable 优先。
 
-`BETTER_AUTH_SECRET`、`GITHUB_CLIENT_SECRET`、`TURNSTILE_SECRET_KEY` 等运行时密钥继续保存在 **Cloudflare Worker → Settings → Runtime variables and secrets**。现有普通运行时变量由 `keep_vars` 保留，发布流程不重新上传运行时密钥。
+`BETTER_AUTH_SECRET`、`GITHUB_CLIENT_SECRET`、`TURNSTILE_SECRET_KEY` 等运行时密钥继续保存在 **Cloudflare Worker → Settings → Runtime variables and secrets**。v3 使用 `cf deploy`，不再支持 `keep_vars`；发布前须将所有运行时变量（包括 `BETTER_AUTH_URL`、`DOMAIN`、`GITHUB_CLIENT_ID`、`ENVIRONMENT` 和可选的 Umami 配置）转换为 **Secret**。部署只保留现有机密，不重新上传运行时密钥。只读预检会检查五项必需运行时变量的机密名称和类型；缺失或仍为普通文本时，在数据库迁移前停止，不读取或打印机密值。
 
 ### 手动运行与首次升级
 
 1. 将需要发布的代码同步或合并到 GitHub `main`，阅读对应版本的更新说明。
 2. 打开 **Actions → 发布生产博客 → Run workflow**，分支选择 `main`。
 3. 首次从旧版本升级时，先确认生产 D1 的备份/Time Travel 可用，阅读下表的数据转换影响，再勾选 **confirm_legacy_upgrade**。以后 `0011–0021` 已全部应用时，无需勾选。
-4. 点击 **Run workflow**，依次查看配置校验、代码检查与测试、构建、部署预检、只读生产预检、D1 迁移和 Worker 发布结果。
+4. 点击 **Run workflow**，依次查看配置校验、代码检查与测试、构建、部署产物检查、只读生产预检、D1 迁移和 Worker 发布结果。
 5. 在任务 **Summary** 保存迁移前的 Worker 部署/版本 ID、D1 Time Travel 书签、待执行迁移清单和提交 SHA。书签写入失败、缺少配置或预检失败都会阻止后续迁移与发布。
 6. 发布后访问 `https://qiqid.com`，检查历史文章、GitHub 登录和后台；首页、登录页及后台入口的 HTTP 响应由任务自动检查，真实登录和后台操作需人工确认。
 7. 首次升级后，在后台 **设置 → 维护 → 重建搜索索引**，再搜索一篇已发布的历史文章。迁移 `0019` 只创建搜索表，不自动为历史文章填充索引。
@@ -297,9 +297,9 @@ Token 以 **Edit Cloudflare Workers** 权限模板为基础，限定到此账号
 | `0020` | 保留站点配置并增加修改版本；旧配置多于一行或 JSON 无效时停止 |
 | `0021` | 删除友链独立联系邮箱，后续通知使用申请人的账号邮箱 |
 
-只读预检使用 `SELECT` 检查迁移记录和系统配置，不调用会尝试创建记录表的 `wrangler d1 migrations list`。若 `d1_migrations` 缺失、历史 `0000–0010` 未完整记录、迁移存在断层或未知记录，任务停止；先核对真实数据库的迁移历史，不要清库、删除历史记录或直接补记迁移。勾选升级确认不能跳过这些检查。
+只读预检使用 `cf d1 query` 的 `SELECT` 检查迁移记录和系统配置，不调用可能创建记录表的迁移列表命令。若 `d1_migrations` 缺失、历史 `0000–0010` 未完整记录、迁移存在断层或未知记录，任务停止；先核对真实数据库的迁移历史，不要清库、删除历史记录或直接补记迁移。勾选升级确认不能跳过这些检查。
 
-本流程使用 Node.js 24、Bun 1.3.14 和 `bun ci` 按锁文件安装依赖；Wrangler 使用仓库锁定版本。构建和 `wrangler deploy --dry-run` 都通过后才检查生产；生产预检只记录恢复信息，后续才执行已有 D1 迁移及 `wrangler deploy --keep-vars`。业务数据库与 Worker 发布不是一个原子事务，迁移后的短时间内旧 Worker 可能与新表结构不兼容，首次升级安排在低访问时段并暂停后台编辑。
+本流程使用 Node.js 24、Bun 1.3.14 和 `bun ci` 按锁文件安装依赖；`cf` 使用仓库锁定版本。构建和 `cf deploy --prebuilt --dry-run` 都通过后才检查生产；生产预检只记录恢复信息，后续才执行已有 D1 迁移及 `cf deploy --prebuilt`。业务数据库与 Worker 发布不是一个原子事务，迁移后的短时间内旧 Worker 可能与新表结构不兼容，首次升级安排在低访问时段并暂停后台编辑。
 
 ### 失败处理与恢复
 

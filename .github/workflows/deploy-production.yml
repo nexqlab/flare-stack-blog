@@ -18,7 +18,7 @@ concurrency:
 
 env:
   CI: "true"
-  WRANGLER_SEND_METRICS: "false"
+  CF_QUIET: "1"
   WORKER_NAME: ${{ vars.WORKER_NAME }}
   DOMAIN: ${{ vars.DOMAIN }}
   D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
@@ -82,14 +82,11 @@ jobs:
       - name: 安装锁定依赖
         run: bun ci
 
-      - name: 生成生产配置
-        run: bun run wrangler:prepare
-
       - name: 构建
         run: bun run build
 
       - name: 检查部署产物（不上传）
-        run: bunx --no-install wrangler deploy --dry-run
+        run: bunx --no-install cf deploy --prebuilt --dry-run
 
       - name: 只读检查生产、迁移记录与恢复书签
         env:
@@ -108,7 +105,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx --no-install wrangler deploy --keep-vars
+        run: bunx --no-install cf deploy --prebuilt
 
       - name: 检查首页与登录入口
         shell: bash

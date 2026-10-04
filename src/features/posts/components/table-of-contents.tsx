@@ -196,7 +196,7 @@ export default function TableOfContents({
     <nav
       className={cn(
         // The portal must sit above the full-width public content wrapper (z-30).
-        "hidden 2xl:block fixed top-14 z-40 pl-4 transition duration-300",
+        "hidden min-[120rem]:block fixed top-14 z-40 pl-4 transition duration-300",
         isVisible && isReady ? "opacity-100" : "opacity-0 pointer-events-none",
       )}
       style={{
@@ -306,7 +306,7 @@ export default function TableOfContents({
     <>
       <div
         ref={slotRef}
-        className="hidden 2xl:block absolute top-0 right-0 w-0 h-0"
+        className="hidden min-[120rem]:block absolute top-0 right-0 w-0 h-0"
         aria-hidden
       />
       {!isSSR && left != null ? createPortal(toc, document.body) : null}

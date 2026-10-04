@@ -5,6 +5,7 @@ import {
   pendingMigrations,
   productionTarget,
   validateProductionEnvironment,
+  validateRuntimeSecrets,
 } from "./deploy-production-preflight";
 
 const migrations = readdirSync("migrations")
@@ -17,6 +18,13 @@ const env = {
   GITHUB_EVENT_NAME: "workflow_dispatch",
   GITHUB_REF: "refs/heads/main",
 };
+const secrets = [
+  "BETTER_AUTH_SECRET",
+  "BETTER_AUTH_URL",
+  "DOMAIN",
+  "GITHUB_CLIENT_ID",
+  "GITHUB_CLIENT_SECRET",
+].map((name) => ({ name, type: "secret_text" }));
 
 function queryResult(results: Record<string, unknown>[]) {
   return [{ success: true, results }];
@@ -40,17 +48,20 @@ function fixture({
   bookmark?: string;
 } = {}) {
   return vi.fn((args: string[]): unknown => {
-    if (args[0] === "deployments") {
-      return [
-        { id: "old-deployment", versions: [{ version_id: "old-version" }] },
-        {
-          id: "current-deployment",
-          versions: [{ version_id: "current-version" }],
-        },
-      ];
+    if (args[1] === "deployments") {
+      return {
+        deployments: [
+          {
+            id: "current-deployment",
+            versions: [{ version_id: "current-version" }],
+          },
+          { id: "old-deployment", versions: [{ version_id: "old-version" }] },
+        ],
+      };
     }
+    if (args[1] === "secrets") return secrets;
     if (args[1] === "time-travel") return { bookmark };
-    const sql = args[args.indexOf("--command") + 1];
+    const sql = args[args.indexOf("--sql") + 1];
     if (sql?.includes("sqlite_schema")) {
       return queryResult(tables.map((name) => ({ name })));
     }
@@ -96,6 +107,38 @@ describe("production deployment guards", () => {
     expect(() =>
       validateProductionEnvironment({ ...env, CLOUDFLARE_API_TOKEN: " " }),
     ).toThrow("CLOUDFLARE_API_TOKEN");
+  });
+});
+
+describe("v3 runtime secrets", () => {
+  it("accepts the required runtime variables as secrets without reading values", () => {
+    expect(() => validateRuntimeSecrets(secrets)).not.toThrow();
+  });
+
+  it.each(secrets.map((binding) => binding.name))(
+    "refuses a missing or plain-text runtime variable: %s",
+    (name) => {
+      expect(() =>
+        validateRuntimeSecrets(
+          secrets.filter((binding) => binding.name !== name),
+        ),
+      ).toThrow(name);
+      expect(() =>
+        validateRuntimeSecrets(
+          secrets.map((binding) =>
+            binding.name === name
+              ? { ...binding, type: "plain_text" }
+              : binding,
+          ),
+        ),
+      ).toThrow(name);
+    },
+  );
+
+  it("rejects malformed secret metadata", () => {
+    for (const response of [null, {}, [null]]) {
+      expect(() => validateRuntimeSecrets(response)).toThrow();
+    }
   });
 });
 
@@ -148,15 +191,32 @@ describe("read-only production preflight", () => {
       bookmark: "00000001-00000001-00000001-test-bookmark",
     });
     for (const [args] of runJson.mock.calls) {
-      if (args[1] === "execute") {
-        expect(args[args.indexOf("--command") + 1]).toMatch(/^SELECT /);
-        expect(args).toContain("--remote");
+      if (args[1] === "query") {
+        expect(args[args.indexOf("--sql") + 1]).toMatch(/^SELECT /);
+        expect(args[2]).toBe(productionTarget.D1_DATABASE_ID);
+        expect(args).not.toContain("--local");
       } else {
-        expect(["deployments list", "d1 time-travel"]).toContain(
-          args.slice(0, 2).join(" "),
-        );
+        expect([
+          "workers deployments list",
+          "workers secrets list",
+          "d1 time-travel get-bookmark",
+        ]).toContain(args.slice(0, 3).join(" "));
       }
     }
+  });
+
+  it("stops before querying D1 when runtime secrets have not been converted", () => {
+    const runJson = fixture();
+    runJson.mockImplementationOnce(() => ({
+      deployments: [{ id: "current", versions: [{ version_id: "v1" }] }],
+    }));
+    runJson.mockImplementationOnce(() =>
+      secrets.filter((binding) => binding.name !== "DOMAIN"),
+    );
+    expect(() => inspectProduction({ env, migrations, runJson })).toThrow(
+      "DOMAIN",
+    );
+    expect(runJson).toHaveBeenCalledTimes(2);
   });
 
   it("refuses a database without its migration ledger without creating one", () => {
@@ -166,7 +226,7 @@ describe("read-only production preflight", () => {
     expect(() => inspectProduction({ env, migrations, runJson })).toThrow(
       "d1_migrations",
     );
-    expect(runJson).toHaveBeenCalledTimes(2);
+    expect(runJson).toHaveBeenCalledTimes(3);
   });
 
   it.each([undefined, "false", "yes"])(
@@ -180,7 +240,7 @@ describe("read-only production preflight", () => {
           runJson,
         }),
       ).toThrow("confirm_legacy_upgrade");
-      expect(runJson).toHaveBeenCalledTimes(3);
+      expect(runJson).toHaveBeenCalledTimes(4);
     },
   );
 
@@ -234,7 +294,13 @@ describe("read-only production preflight", () => {
       inspectProduction({ env, migrations, runJson: denied }),
     ).toThrow("Permission denied");
     expect(denied).toHaveBeenCalledTimes(1);
-    for (const response of [null, {}, [], [{ id: "no-version" }]]) {
+    for (const response of [
+      null,
+      {},
+      [],
+      { deployments: [] },
+      { deployments: [{ id: "no-version" }] },
+    ]) {
       expect(() =>
         inspectProduction({ env, migrations, runJson: () => response }),
       ).toThrow();
@@ -243,9 +309,10 @@ describe("read-only production preflight", () => {
 
   it("refuses a failed D1 SELECT response", () => {
     const runJson = fixture();
-    runJson.mockImplementationOnce(() => [
-      { id: "current", versions: [{ version_id: "v1" }] },
-    ]);
+    runJson.mockImplementationOnce(() => ({
+      deployments: [{ id: "current", versions: [{ version_id: "v1" }] }],
+    }));
+    runJson.mockImplementationOnce(() => secrets);
     runJson.mockImplementationOnce(() => [{ success: false, results: [] }]);
     expect(() => inspectProduction({ env, migrations, runJson })).toThrow(
       "只读查询失败",
