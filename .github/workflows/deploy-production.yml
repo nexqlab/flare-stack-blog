@@ -88,6 +88,15 @@ jobs:
       - name: 检查部署产物（不上传）
         run: bunx --no-install cf deploy --prebuilt --dry-run
 
+      - name: 保存已校验产物供首次配置升级使用
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-build-${{ github.sha }}
+          path: .cloudflare/output/v0/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
       - name: 只读检查生产、迁移记录与恢复书签
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -105,7 +114,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx --no-install cf deploy --prebuilt
+        run: bunx --no-install cf deploy --prebuilt --tag "$GITHUB_SHA"
 
       - name: 检查首页与登录入口
         shell: bash

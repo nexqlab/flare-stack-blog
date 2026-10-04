@@ -301,6 +301,8 @@ Token 以 **Edit Cloudflare Workers** 权限模板为基础，限定到此账号
 
 本流程使用 Node.js 24、Bun 1.3.14 和 `bun ci` 按锁文件安装依赖；`cf` 使用仓库锁定版本。构建和 `cf deploy --prebuilt --dry-run` 都通过后才检查生产；生产预检只记录恢复信息，后续才执行已有 D1 迁移及 `cf deploy --prebuilt`。业务数据库与 Worker 发布不是一个原子事务，迁移后的短时间内旧 Worker 可能与新表结构不兼容，首次升级安排在低访问时段并暂停后台编辑。
 
+任务将已通过 dry-run 的 Build Output 保存为 `production-build-<提交 SHA>`，保留 1 天，发布版本使用提交 SHA 作为 tag。锁定的 `cf` 在 CI 中强制拒绝覆盖控制台配置；首次 v3 升级若因此在上传前停止，须先核对差异和只读预检，下载该次任务产物，在同一提交及锁定依赖下通过交互式 `cf deploy --prebuilt --tag <提交 SHA>` 接受已确认的配置变化，再重新运行失败的发布 job。不要修改旧 Wrangler 配置、跳过迁移预检或自动接受未知配置差异。启用 Umami 时，预检还要求 `UMAMI_WEBSITE_ID` 与 `UMAMI_SRC` 均为运行时 Secret。
+
 ### 失败处理与恢复
 
 构建、测试或只读预检失败时，不会执行生产迁移和发布。迁移失败时，不继续发布；此前已经成功执行的迁移可能保留，先核对日志和迁移记录。生产任务不会自动重试迁移、恢复数据库或切回旧代码。

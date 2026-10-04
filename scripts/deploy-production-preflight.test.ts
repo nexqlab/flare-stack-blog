@@ -140,6 +140,24 @@ describe("v3 runtime secrets", () => {
       expect(() => validateRuntimeSecrets(response)).toThrow();
     }
   });
+
+  it("requires both Umami runtime secrets when analytics is enabled", () => {
+    const umamiSecrets = ["UMAMI_WEBSITE_ID", "UMAMI_SRC"].map((name) => ({
+      name,
+      type: "secret_text",
+    }));
+    expect(() =>
+      validateRuntimeSecrets([...secrets, ...umamiSecrets], true),
+    ).not.toThrow();
+    for (const name of ["UMAMI_WEBSITE_ID", "UMAMI_SRC"]) {
+      expect(() =>
+        validateRuntimeSecrets(
+          [...secrets, ...umamiSecrets].filter((binding) => binding.name !== name),
+          true,
+        ),
+      ).toThrow(name);
+    }
+  });
 });
 
 describe("migration history and upgrade confirmation", () => {
@@ -216,6 +234,18 @@ describe("read-only production preflight", () => {
     expect(() => inspectProduction({ env, migrations, runJson })).toThrow(
       "DOMAIN",
     );
+    expect(runJson).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops before D1 when enabled analytics would lose its runtime configuration", () => {
+    const runJson = fixture();
+    expect(() =>
+      inspectProduction({
+        env: { ...env, VITE_UMAMI_WEBSITE_ID: "public-website-id" },
+        migrations,
+        runJson,
+      }),
+    ).toThrow("UMAMI_WEBSITE_ID");
     expect(runJson).toHaveBeenCalledTimes(2);
   });
 

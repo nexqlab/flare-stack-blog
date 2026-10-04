@@ -114,7 +114,10 @@ function queryRows(runJson: RunJson, sql: string): JsonRecord[] {
   return result.results.map(record);
 }
 
-export function validateRuntimeSecrets(response: unknown): void {
+export function validateRuntimeSecrets(
+  response: unknown,
+  umamiEnabled = false,
+): void {
   if (!Array.isArray(response)) {
     throw new Error("无法读取生产运行时机密清单；拒绝发布。");
   }
@@ -130,6 +133,7 @@ export function validateRuntimeSecrets(response: unknown): void {
     "DOMAIN",
     "GITHUB_CLIENT_ID",
     "GITHUB_CLIENT_SECRET",
+    ...(umamiEnabled ? ["UMAMI_WEBSITE_ID", "UMAMI_SRC"] : []),
   ].filter((name) => !secrets.has(name));
   if (missing.length) {
     throw new Error(
@@ -177,6 +181,7 @@ export function inspectProduction({
       "--worker",
       productionTarget.WORKER_NAME,
     ]),
+    Boolean(env.VITE_UMAMI_WEBSITE_ID?.trim()),
   );
 
   // Migration-list commands may create a ledger. Only
