@@ -175,8 +175,16 @@ describe("migration history and upgrade confirmation", () => {
   });
 
   it("requires confirmation when only the last legacy migration remains", () => {
+    const legacyMigrations = migrations.filter(
+      (name) => Number(name.slice(0, 4)) <= 21,
+    );
+  
     expect(() =>
-      pendingMigrations(migrations, migrations.slice(0, -1), false),
+      pendingMigrations(
+        legacyMigrations,
+        legacyMigrations.slice(0, -1),
+        false,
+      ),
     ).toThrow("confirm_legacy_upgrade");
   });
 
