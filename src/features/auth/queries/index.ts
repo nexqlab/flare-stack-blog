@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { queryOptions } from "@tanstack/react-query";
-import { authClient } from "@/lib/auth/auth.client";
+import { authClient } from "@/lib/auth/auth-client";
 import { orpc } from "@/lib/orpc";
 
 const AUTH_KEYS = {
@@ -24,7 +24,7 @@ export const emailConfiguredQuery = orpc.email.configured.queryOptions();
 
 export function resetAuthBoundQueries(queryClient: QueryClient) {
   queryClient.removeQueries({ queryKey: AUTH_KEYS.session });
-  queryClient.invalidateQueries({ queryKey: orpc.comments.key() });
-  queryClient.invalidateQueries({ queryKey: orpc.email.key() });
-  queryClient.invalidateQueries({ queryKey: orpc.friendLinks.mine.key() });
+  void queryClient.invalidateQueries({ queryKey: orpc.comments.key() });
+  void queryClient.invalidateQueries({ queryKey: orpc.email.key() });
+  void queryClient.invalidateQueries({ queryKey: orpc.friendLinks.mine.key() });
 }

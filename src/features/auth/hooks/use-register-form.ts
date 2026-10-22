@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { resetAuthBoundQueries } from "@/features/auth/queries";
 import { usePreviousLocation } from "@/hooks/use-previous-location";
-import { authClient } from "@/lib/auth/auth.client";
+import { authClient } from "@/lib/auth/auth-client";
 import { getRegisterAuthErrorMessage } from "@/lib/auth/auth-errors";
 import type { Messages } from "@/lib/i18n";
 import { m } from "@/paraglide/messages";
@@ -93,7 +93,7 @@ export function useRegisterForm(options: UseRegisterFormOptions) {
       toast.success(m.register_toast_success(), {
         description: m.register_toast_activated(),
       });
-      navigate({ to: previousLocation });
+      void navigate({ to: previousLocation });
     }
   };
 

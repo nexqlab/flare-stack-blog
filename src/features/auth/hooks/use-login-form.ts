@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { resetAuthBoundQueries } from "@/features/auth/queries";
 import { usePreviousLocation } from "@/hooks/use-previous-location";
-import { authClient } from "@/lib/auth/auth.client";
+import { authClient } from "@/lib/auth/auth-client";
 import {
   getLoginAuthErrorMessage,
   isEmailNotVerifiedError,
@@ -68,7 +68,7 @@ export function useLoginForm(options: UseLoginFormOptions) {
 
     if (target.startsWith(window.location.origin)) {
       const url = new URL(target);
-      navigate({ to: `${url.pathname}${url.search}${url.hash}` });
+      void navigate({ to: `${url.pathname}${url.search}${url.hash}` });
       return;
     }
 

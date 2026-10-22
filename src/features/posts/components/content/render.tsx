@@ -1,8 +1,11 @@
 import type { JSONContent } from "@tiptap/react";
 import { renderToReactElement } from "@tiptap/static-renderer/pm/react";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Children, type ReactNode } from "react";
+import { Children, lazy, type ReactNode, Suspense } from "react";
 import { schemaExtensions } from "@/features/posts/editor/schema";
+import { cellAlign } from "@/features/posts/editor/extensions/table/column-align";
+import { tableColumnLayout } from "@/features/posts/editor/extensions/table/column-widths";
+import { isMermaidLanguage } from "@/lib/code-languages";
 import { parseImageSize } from "@/features/posts/utils/normalize-content";
 import {
   clampHeadingLevel,
@@ -10,6 +13,15 @@ import {
 } from "@/features/posts/utils/toc";
 import { CodeBlock } from "@/features/posts/components/content/code-block";
 import { ImageDisplay } from "@/features/posts/components/content/image-display";
+import { VideoEmbed } from "@/features/posts/components/content/video-embed";
+import {
+  videoMetaOf,
+  videoSourceOf,
+} from "@/features/posts/utils/video-source";
+import { m } from "@/paraglide/messages";
+
+// Only posts with a Mermaid code block load the diagram renderer (ADR 0027).
+const MermaidCodeBlock = lazy(() => import("./mermaid-code-block"));
 
 export function renderReact(
   content: JSONContent,
@@ -27,7 +39,26 @@ export function renderReact(
           const attrs = node.attrs as { level?: number; id?: string };
           const level = clampHeadingLevel(attrs.level);
           const Tag = `h${level}` as const;
-          return <Tag id={attrs.id}>{children}</Tag>;
+          return (
+            <Tag id={attrs.id}>
+              {children}
+              {attrs.id ? (
+                <a
+                  href={`#${attrs.id}`}
+                  className="anchor no-styling"
+                  aria-label={m.post_heading_link()}
+                >
+                  #
+                </a>
+              ) : null}
+            </Tag>
+          );
+        },
+        video: ({ node }) => {
+          const source = videoSourceOf(node.attrs);
+          return source ? (
+            <VideoEmbed source={source} meta={videoMetaOf(node.attrs)} />
+          ) : null;
         },
         image: ({ node }) => {
           const attrs = node.attrs as {
@@ -57,12 +88,22 @@ export function renderReact(
             highlightedHtml?: string;
           };
 
-          return (
+          const codeBlock = (
             <CodeBlock
               code={code}
               language={attrs.language || null}
               highlightedHtml={attrs.highlightedHtml}
             />
+          );
+          if (!isMermaidLanguage(attrs.language)) return codeBlock;
+
+          return (
+            <Suspense fallback={codeBlock}>
+              <MermaidCodeBlock
+                code={code}
+                highlightedHtml={attrs.highlightedHtml}
+              />
+            </Suspense>
           );
         },
         table: ({ node, children }) => {
@@ -70,9 +111,24 @@ export function renderReact(
           const headerCount = leadingHeaderRowCount(node);
           const headerRows = rows.slice(0, headerCount);
           const bodyRows = rows.slice(headerCount);
+          // Stored pixel widths are proportions here (ADR 0028).
+          const layout = tableColumnLayout(node);
           return (
             <div className="fuwari-table-scroll">
-              <table>
+              <table
+                style={
+                  layout
+                    ? { tableLayout: "fixed", minWidth: layout.minWidth }
+                    : undefined
+                }
+              >
+                {layout ? (
+                  <colgroup>
+                    {layout.widths.map((width, index) => (
+                      <col key={index} style={{ width }} />
+                    ))}
+                  </colgroup>
+                ) : null}
                 {headerRows.length > 0 ? <thead>{headerRows}</thead> : null}
                 {bodyRows.length > 0 ? <tbody>{bodyRows}</tbody> : null}
               </table>
@@ -84,8 +140,13 @@ export function renderReact(
             colspan?: number;
             rowspan?: number;
           };
+          const align = cellAlign(node.attrs);
           return (
-            <td colSpan={attrs.colspan} rowSpan={attrs.rowspan}>
+            <td
+              colSpan={attrs.colspan}
+              rowSpan={attrs.rowspan}
+              style={align ? { textAlign: align } : undefined}
+            >
               {children}
             </td>
           );
@@ -95,8 +156,13 @@ export function renderReact(
             colspan?: number;
             rowspan?: number;
           };
+          const align = cellAlign(node.attrs);
           return (
-            <th colSpan={attrs.colspan} rowSpan={attrs.rowspan}>
+            <th
+              colSpan={attrs.colspan}
+              rowSpan={attrs.rowspan}
+              style={align ? { textAlign: align } : undefined}
+            >
               {children}
             </th>
           );

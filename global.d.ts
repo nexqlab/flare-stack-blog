@@ -32,4 +32,6 @@ declare global {
   };
 
   const __APP_VERSION__: string;
+  /** Identifies the deployed build; see the Workers Cache key in server.ts. */
+  const __BUILD_ID__: string;
 }

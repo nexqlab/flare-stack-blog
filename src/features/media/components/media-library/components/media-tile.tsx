@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { getOriginalImageUrl } from "@/features/media/utils/media.utils";
 import { cn, formatBytes } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { m } from "@/paraglide/messages";
 import type { MediaAsset } from "../types";
 
@@ -31,11 +32,9 @@ export function MediaTile({
           unused && "ring-2 ring-(--fuwari-warning)",
         )}
       >
-        {!loaded && (
-          <div className="absolute inset-0 animate-pulse bg-(--fuwari-btn-regular-bg)" />
-        )}
+        {!loaded && <Skeleton className="absolute inset-0 rounded-none" />}
         <img
-          src={getOriginalImageUrl(asset.key)}
+          src={asset.url}
           alt={asset.fileName}
           className={cn(
             "h-full w-full object-cover",
@@ -45,13 +44,13 @@ export function MediaTile({
           onLoad={() => setLoaded(true)}
         />
         {unused ? (
-          <span className="absolute top-2 left-2 h-6 px-2 rounded-full text-[11px] font-medium bg-(--fuwari-warning-bg) text-(--fuwari-warning-fg) grid place-items-center">
+          <Badge tone="warning" size="sm" className="absolute top-2 left-2">
             {m.media_badge_unused()}
-          </span>
+          </Badge>
         ) : asset.isCover ? (
-          <span className="absolute top-2 left-2 h-6 px-2 rounded-full text-[11px] font-medium bg-(--fuwari-primary) text-white grid place-items-center">
+          <Badge tone="primary" size="sm" className="absolute top-2 left-2">
             {m.media_badge_cover()}
-          </span>
+          </Badge>
         ) : null}
       </div>
       <div className="min-w-0 px-0.5">

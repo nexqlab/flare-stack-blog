@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { authClient } from "@/lib/auth/auth.client";
+import { authClient } from "@/lib/auth/auth-client";
 import { getProfileAuthErrorMessage } from "@/lib/auth/auth-errors";
 import type { Messages } from "@/lib/i18n";
 import { m } from "@/paraglide/messages";
@@ -43,6 +43,7 @@ export function useProfileForm(options: UseProfileFormOptions) {
     register,
     handleSubmit,
     reset,
+    setValue,
     watch,
     formState: { errors, isSubmitting, isDirty },
   } = form;
@@ -83,6 +84,8 @@ export function useProfileForm(options: UseProfileFormOptions) {
     isSubmitting,
     isDirty,
     image: watch("image") || "",
+    setImage: (image: string) =>
+      setValue("image", image, { shouldDirty: true, shouldValidate: true }),
     feedback,
   };
 }

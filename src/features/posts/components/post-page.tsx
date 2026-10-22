@@ -1,17 +1,18 @@
 import { ClientOnly, Link } from "@tanstack/react-router";
 import { Clock, FileText, Pencil } from "lucide-react";
-import {
-  getPublicImageSrc,
-  PUBLIC_IMAGE_WIDTH,
-} from "@/features/media/utils/media.utils";
+import { useRef } from "react";
+import { PUBLIC_IMAGE_WIDTH } from "@/features/media/utils/media.utils";
 import { CommentSection } from "@/features/comments/components/comment-section";
 import { ContentRenderer } from "@/features/posts/components/content/content-renderer";
 import type { PostWithToc } from "@/features/posts/schema/posts.schema";
-import { authClient } from "@/lib/auth/auth.client";
+import { authClient } from "@/lib/auth/auth-client";
 import { m } from "@/paraglide/messages";
+import { usePhotoSwipeGallery } from "./content/photo-swipe";
+import { useHeadingAnchors } from "./content/use-heading-anchors";
 import ZoomableImage from "./content/zoomable-image";
 import { PostAdjacentNav } from "./post-adjacent-nav";
 import { PostMeta } from "./post-meta";
+import { PostOutdatedNotice } from "./post-outdated-notice";
 import { PostSummary } from "./post-summary";
 import TableOfContents from "./table-of-contents";
 
@@ -25,6 +26,12 @@ function enterDelay(extraMs: number) {
 
 export function PostPage({ post }: PostPageProps) {
   const { data: session } = authClient.useSession();
+  // The cover opens on its own; body images form one gallery.
+  const coverRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  usePhotoSwipeGallery(coverRef, post.id);
+  usePhotoSwipeGallery(contentRef, post.id);
+  useHeadingAnchors(contentRef);
   // Approximate word count
   const wordCount = post.readTimeInMinutes * 300;
 
@@ -103,6 +110,7 @@ export function PostPage({ post }: PostPageProps) {
 
         {post.cover && (
           <div
+            ref={coverRef}
             id="post-cover"
             className="mb-8 rounded-xl overflow-hidden fuwari-onload-animation"
             style={{
@@ -110,7 +118,8 @@ export function PostPage({ post }: PostPageProps) {
             }}
           >
             <ZoomableImage
-              src={getPublicImageSrc(post.cover.url, PUBLIC_IMAGE_WIDTH.cover)}
+              src={post.cover.url}
+              displayWidth={PUBLIC_IMAGE_WIDTH.cover}
               alt={post.title}
               width={post.cover.width ?? undefined}
               height={post.cover.height ?? undefined}
@@ -131,7 +140,14 @@ export function PostPage({ post }: PostPageProps) {
             animationDelay: enterDelay(325),
           }}
         >
-          <div className="mb-6 prose dark:prose-invert prose-base max-w-none! fuwari-custom-md">
+          <PostOutdatedNotice
+            publishedAt={post.publishedAt}
+            updatedAt={post.updatedAt}
+          />
+          <div
+            ref={contentRef}
+            className="mb-6 prose dark:prose-invert prose-base max-w-none! fuwari-custom-md"
+          >
             <ContentRenderer content={post.contentJson} />
           </div>
           <div className="my-8 flex items-center justify-center w-full">

@@ -1,11 +1,14 @@
 import { useMutation } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useRef } from "react";
 import { type FieldPath, useFormContext } from "react-hook-form";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  SITE_ASSET_MAX_FILE_SIZE,
+  SITE_ASSET_MAX_FILE_SIZE_MB,
+} from "@/features/config/config.asset.schema";
 import type { SystemConfig } from "@/features/config/config.schema";
 import { orpcClient } from "@/lib/orpc";
-import { cn } from "@/lib/utils";
 import { m } from "@/paraglide/messages";
 
 export function OverlayUpload({
@@ -14,12 +17,15 @@ export function OverlayUpload({
   accept,
   className,
   label,
+  variant = "overlay",
 }: {
   name: FieldPath<SystemConfig>;
   assetPath: string;
   accept: string;
   className?: string;
   label?: string;
+  /** `regular` where the button does not sit on an image. */
+  variant?: "overlay" | "regular";
 }) {
   const { setValue, watch } = useFormContext<SystemConfig>();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,24 +61,28 @@ export function OverlayUpload({
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
-          if (file) upload.mutate(file);
           event.target.value = "";
+          if (!file) return;
+          if (file.size > SITE_ASSET_MAX_FILE_SIZE) {
+            toast.error(m.settings_asset_upload_fail(), {
+              description: m.settings_asset_validation_file_too_large({
+                maxSizeMb: SITE_ASSET_MAX_FILE_SIZE_MB,
+              }),
+            });
+            return;
+          }
+          upload.mutate(file);
         }}
       />
-      <button
-        type="button"
+      <Button
+        variant={variant}
+        size="sm"
         onClick={() => inputRef.current?.click()}
-        disabled={upload.isPending}
-        className={cn(
-          "inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-black/45 text-white text-xs font-medium backdrop-blur-sm disabled:opacity-60",
-          className,
-        )}
+        loading={upload.isPending}
+        className={className}
       >
-        {upload.isPending ? (
-          <Loader2 size={12} className="animate-spin" />
-        ) : null}
         {buttonText}
-      </button>
+      </Button>
     </>
   );
 }

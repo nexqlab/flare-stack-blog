@@ -1,5 +1,10 @@
 import type { JSONContent } from "@tiptap/react";
 import { extractImageKey } from "@/features/media/utils/media.utils";
+import {
+  videoMetaOf,
+  videoPageUrl,
+  videoSourceOf,
+} from "@/features/posts/utils/video-source";
 
 export function slugify(text: string | null | undefined) {
   if (!text) return "untitled-log";
@@ -62,16 +67,35 @@ export function extractAllImageKeys(doc: JSONContent | null): Array<string> {
   return Array.from(new Set(keys)); // 去重
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
+/**
+ * Points every image of `key` at `src`. Returns null when the document has no
+ * image of that key, so callers can skip the write.
+ */
+export function replaceImageSrc(
+  doc: JSONContent | null,
+  key: string,
+  src: string,
+): JSONContent | null {
+  let changed = false;
 
-export function fallbackCodeHtml(code: string) {
-  return `<pre><code>${escapeHtml(code)}</code></pre>`;
+  function traverse(node: JSONContent): JSONContent {
+    let next = node;
+    if (
+      node.type === "image" &&
+      typeof node.attrs?.src === "string" &&
+      extractImageKey(node.attrs.src) === key &&
+      node.attrs.src !== src
+    ) {
+      changed = true;
+      next = { ...node, attrs: { ...node.attrs, src } };
+    }
+    if (next.content) next = { ...next, content: next.content.map(traverse) };
+    return next;
+  }
+
+  if (!doc) return null;
+  const next = traverse(doc);
+  return changed ? next : null;
 }
 
 export function convertToPlainText(doc: JSONContent | null): string {
@@ -87,6 +111,16 @@ export function convertToPlainText(doc: JSONContent | null): string {
     else if (node.type === "image" && node.attrs?.alt) {
       // 给图片文本加个空格，防止和前后文粘连
       textParts.push(` ${node.attrs.alt} `);
+    }
+    // 视频没有文字，输出原视频链接，RSS 阅读器里也能找到
+    else if (node.type === "video") {
+      const source = videoSourceOf(node.attrs);
+      const { title } = videoMetaOf(node.attrs);
+      if (source) {
+        textParts.push(
+          `\n${title ? `${title} ` : ""}${videoPageUrl(source)}\n`,
+        );
+      }
     }
 
     // 3. 递归遍历子节点 (处理 Heading, Blockquote, List 等容器)

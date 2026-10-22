@@ -1,7 +1,7 @@
 import { Image as ImageIcon } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { MediaPicker } from "@/features/media/components/media-library/components";
-import { getOriginalImageUrl } from "@/features/media/utils/media.utils";
 import { m } from "@/paraglide/messages";
 import type { PostEditorData } from "./types";
 
@@ -49,7 +49,7 @@ export function PostEditorCover({
       >
         {cover ? (
           <img
-            src={getOriginalImageUrl(cover.key)}
+            src={cover.url}
             alt={cover.fileName}
             className="h-full w-full object-cover"
           />
@@ -66,25 +66,21 @@ export function PostEditorCover({
               : "flex shrink-0 gap-1.5"
           }
         >
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant={cover ? "overlay" : "regular"}
             onClick={() => setPickerOpen(true)}
-            className={
-              cover
-                ? "h-8 rounded-lg bg-black/45 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/55"
-                : "fuwari-btn-regular h-9 rounded-lg px-3 text-xs"
-            }
           >
             {cover ? m.editor_meta_cover_change() : m.editor_meta_cover_pick()}
-          </button>
+          </Button>
           {cover ? (
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant="overlay"
               onClick={() => onChange({ coverMediaId: null, cover: null })}
-              className="h-8 rounded-xl bg-black/45 px-3 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/55"
             >
               {m.editor_meta_cover_clear()}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

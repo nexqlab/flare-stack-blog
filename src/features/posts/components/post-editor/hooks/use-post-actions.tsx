@@ -3,9 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PostEditorData } from "@/features/posts/components/post-editor/types";
 import { slugify } from "@/features/posts/utils/content";
-import { orpc, orpcClient } from "@/lib/orpc";
+import { orpcClient } from "@/lib/orpc";
 import { useDebounce } from "@/hooks/use-debounce";
 import { m } from "@/paraglide/messages";
+import {
+  invalidatePostQueries,
+  useUnpublishPost,
+} from "../../post-manager/hooks";
 import {
   BLOB_UPLOADING_ERROR,
   shouldAutogenerateSlug,
@@ -44,19 +48,13 @@ export function usePostActions({
   const slugGenerationMode = useRef<"manual" | "auto">("manual");
   const latestSlugRef = useRef(post.slug);
   const latestTitleRef = useRef(post.title);
+  const publishedRef = useRef(false);
   latestSlugRef.current = post.slug;
   latestTitleRef.current = post.title;
+  // `publishedAt` arrives on reload after the first publish and survives an
+  // unpublish; `hasPublicSnapshot` covers the session that first publishes.
+  publishedRef.current = post.hasPublicSnapshot || post.publishedAt !== null;
   const debouncedTitle = useDebounce(post.title, 500);
-
-  const invalidatePostQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: orpc.posts.admin.get.key({ input: { id: postId } }),
-    });
-    void queryClient.invalidateQueries({
-      queryKey: orpc.posts.admin.list.key(),
-    });
-    void queryClient.invalidateQueries({ queryKey: orpc.posts.list.key() });
-  };
 
   const publishMutation = useMutation({
     mutationFn: () => orpcClient.posts.admin.publish({ id: postId }),
@@ -64,7 +62,7 @@ export function usePostActions({
       toast.success(m.editor_header_publish());
       setPost((prev) => ({ ...prev, hasPublicSnapshot: true }));
       setProcessState("SUCCESS");
-      invalidatePostQueries();
+      void invalidatePostQueries(queryClient, postId);
       setTimeout(() => {
         setProcessState("IDLE");
       }, 3000);
@@ -75,24 +73,16 @@ export function usePostActions({
     },
   });
 
-  const unpublishMutation = useMutation({
-    mutationFn: () => orpcClient.posts.admin.unpublish({ id: postId }),
+  const { mutate: unpublish } = useUnpublishPost({
     onSuccess: () => {
-      toast.success(m.editor_header_unpublish());
       setPost((prev) => ({ ...prev, hasPublicSnapshot: false }));
       setProcessState("SUCCESS");
-      invalidatePostQueries();
       setTimeout(() => {
         setProcessState("IDLE");
       }, 3000);
     },
-    onError: () => {
-      toast.error(m.editor_action_unpublish_failed());
-      setProcessState("IDLE");
-    },
+    onError: () => setProcessState("IDLE"),
   });
-
-  const unpublish = unpublishMutation.mutate;
 
   const handlePublish = useCallback(async () => {
     if (processState !== "IDLE") return;
@@ -114,8 +104,8 @@ export function usePostActions({
   const handleUnpublish = useCallback(() => {
     if (processState !== "IDLE") return;
     setProcessState("PROCESSING");
-    unpublish();
-  }, [processState, unpublish]);
+    unpublish(postId);
+  }, [postId, processState, unpublish]);
 
   const slugMutation = useMutation({
     mutationFn: (title: string) =>
@@ -144,7 +134,11 @@ export function usePostActions({
       queuedTitleRef.current = null;
       if (
         queuedTitle &&
-        shouldAutogenerateSlug(latestSlugRef.current, lastAutoSlugRef.current)
+        shouldAutogenerateSlug(
+          latestSlugRef.current,
+          lastAutoSlugRef.current,
+          publishedRef.current,
+        )
       ) {
         slugGenerationMode.current = "auto";
         slugMutation.mutate(queuedTitle);
@@ -172,7 +166,11 @@ export function usePostActions({
       return;
     }
     if (
-      !shouldAutogenerateSlug(latestSlugRef.current, lastAutoSlugRef.current)
+      !shouldAutogenerateSlug(
+        latestSlugRef.current,
+        lastAutoSlugRef.current,
+        publishedRef.current,
+      )
     ) {
       return;
     }
